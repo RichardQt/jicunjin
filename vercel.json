@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/gold",
+      "destination": "https://api.tangdouz.com/a/zsgold.php"
+    }
+  ]
+}
