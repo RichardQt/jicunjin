@@ -145,6 +145,46 @@
             color: var(--text-muted);
             margin-top: 16px;
         }
+        /* --- 移动端优化适配 --- */
+@media (max-width: 480px) {
+    body {
+        padding: 10px; /* 减小外边距，留出更多屏幕空间 */
+    }
+
+    .dashboard {
+        padding: 16px; /* 减小卡片内边距 */
+    }
+
+    .header h1 {
+        font-size: 18px; /* 标题稍微缩小 */
+    }
+
+    .current-price {
+        font-size: 36px; /* 核心价格字体缩小，防止换行 */
+        margin-right: 12px;
+    }
+
+    .price-change {
+        font-size: 14px;
+    }
+
+    /* 核心修复：将输入框从左右并排改为上下堆叠 */
+    .input-group {
+        flex-direction: column; 
+        gap: 10px;
+    }
+
+    input {
+        width: 100%; /* 确保输入框占满全宽 */
+        box-sizing: border-box; /* 防止边框撑破宽度 */
+        padding: 12px; /* 增加触摸面积，方便手机点击 */
+    }
+
+    .grid-info {
+        gap: 12px;
+        font-size: 13px;
+    }
+}
     </style>
 </head>
 <body>
@@ -288,3 +328,4 @@
 </body>
 
 </html>
+
