@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>浙商银行积存金实时行情</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --up-color: #f23645;   /* 金融红 */
+            --down-color: #089981; /* 金融绿 */
+            --border-color: #333333;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 600px;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .update-time {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .price-display {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 24px;
+        }
+
+        .current-price {
+            font-size: 48px;
+            font-weight: bold;
+            margin-right: 16px;
+        }
+
+        .price-change {
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .up { color: var(--up-color); }
+        .down { color: var(--down-color); }
+        .neutral { color: var(--text-main); }
+
+        .grid-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        .info-label { color: var(--text-muted); }
+
+        .calculator {
+            background-color: #2a2a2a;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .calc-title {
+            font-size: 16px;
+            margin: 0 0 12px 0;
+            font-weight: 600;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        input {
+            flex: 1;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: var(--text-muted);
+        }
+
+        .pnl-result {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dotted var(--border-color);
+        }
+
+        .pnl-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .status-bar {
+            text-align: right;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="header">
+        <h1>浙商银行积存金 (JCJ)</h1>
+        <div class="update-time" id="updateTime">正在获取数据...</div>
+    </div>
+
+    <div class="price-display">
+        <div class="current-price neutral" id="currentPrice">--</div>
+        <div class="price-change neutral" id="priceChange">-- (--%)</div>
+    </div>
+
+    <div class="grid-info">
+        <div class="info-item"><span class="info-label">开盘价</span><span id="openPrice">--</span></div>
+        <div class="info-item"><span class="info-label">最高价</span><span id="highPrice">--</span></div>
+        <div class="info-item"><span class="info-label">前收盘</span><span id="prevClose">--</span></div>
+        <div class="info-item"><span class="info-label">最低价</span><span id="lowPrice">--</span></div>
+    </div>
+
+    <div class="calculator">
+        <h3 class="calc-title">持仓盈亏试算</h3>
+        <div class="input-group">
+            <input type="number" id="buyPrice" placeholder="买入均价 (元/克)" step="0.01" oninput="calculatePnL()">
+            <input type="number" id="holdAmount" placeholder="持仓数量 (克)" step="0.01" oninput="calculatePnL()">
+        </div>
+        <div class="pnl-result">
+            <span>浮动盈亏 (元)</span>
+            <span class="pnl-value neutral" id="pnlValue">0.00</span>
+        </div>
+    </div>
+
+    <div class="status-bar" id="statusBar">等待下一次刷新...</div>
+</div>
+
+<script>
+    const API_URL = 'https://api.tangdouz.com/a/zsgold.php';
+    let latestPriceNum = 0;
+
+    // 解析纯文本数据的辅助函数
+    function parseData(text) {
+        const extract = (keyword) => {
+            const regex = new RegExp(`${keyword}:\\s*([-\\d.]+)`);
+            const match = text.match(regex);
+            return match ? match[1] : '--';
+        };
+
+        const timeRegex = /更新时间:\s*([\d-]+[\s\d:]+)/;
+        const timeMatch = text.match(timeRegex);
+
+        return {
+            price: extract('最新价格'),
+            change: extract('涨跌额'),
+            changePercent: text.match(/涨跌幅:\s*([-\d.]+%)|$/)[1] || '--',
+            open: extract('开盘价'),
+            high: extract('最高价'),
+            low: extract('最低价'),
+            prevClose: extract('前收盘价'),
+            updateTime: timeMatch ? timeMatch[1] : new Date().toLocaleTimeString()
+        };
+    }
+
+    // 设置涨跌颜色
+    function getColorClass(value) {
+        const num = parseFloat(value);
+        if (isNaN(num) || num === 0) return 'neutral';
+        return num > 0 ? 'up' : 'down';
+    }
+
+    // 更新 DOM
+    function updateUI(data) {
+        latestPriceNum = parseFloat(data.price);
+        
+        const priceEl = document.getElementById('currentPrice');
+        const changeEl = document.getElementById('priceChange');
+
+        priceEl.innerText = data.price;
+        changeEl.innerText = `${data.change > 0 ? '+' : ''}${data.change} (${data.changePercent})`;
+
+        const colorClass = getColorClass(data.change);
+        priceEl.className = `current-price ${colorClass}`;
+        changeEl.className = `price-change ${colorClass}`;
+
+        document.getElementById('openPrice').innerText = data.open;
+        document.getElementById('highPrice').innerText = data.high;
+        document.getElementById('lowPrice').innerText = data.low;
+        document.getElementById('prevClose').innerText = data.prevClose;
+        document.getElementById('updateTime').innerText = `更新时间: ${data.updateTime}`;
+        
+        calculatePnL(); // 数据刷新时重新计算盈亏
+    }
+
+    // 计算盈亏
+    window.calculatePnL = function() {
+        const buyPrice = parseFloat(document.getElementById('buyPrice').value);
+        const holdAmount = parseFloat(document.getElementById('holdAmount').value);
+        const pnlEl = document.getElementById('pnlValue');
+
+        if (!isNaN(buyPrice) && !isNaN(holdAmount) && latestPriceNum > 0) {
+            const pnl = (latestPriceNum - buyPrice) * holdAmount;
+            pnlEl.innerText = (pnl > 0 ? '+' : '') + pnl.toFixed(2);
+            pnlEl.className = `pnl-value ${getColorClass(pnl)}`;
+        } else {
+            pnlEl.innerText = "0.00";
+            pnlEl.className = "pnl-value neutral";
+        }
+    };
+
+    // 获取数据
+    async function fetchGoldData() {
+        const statusEl = document.getElementById('statusBar');
+        statusEl.innerText = "正在获取最新数据...";
+        
+        try {
+            const response = await fetch(API_URL);
+            if (!response.ok) throw new Error('网络响应异常');
+            
+            // 因为接口返回内容带有特殊字符，按文本读取
+            const text = await response.text(); 
+            const parsedData = parseData(text);
+            
+            if (parsedData.price !== '--') {
+                updateUI(parsedData);
+                statusEl.innerText = "数据已更新";
+            } else {
+                throw new Error('数据解析失败');
+            }
+        } catch (error) {
+            console.error('获取数据失败:', error);
+            statusEl.innerText = `获取失败，请检查网络或跨域设置 (${new Date().toLocaleTimeString()})`;
+        }
+    }
+
+    // 初始化并设置定时器 (30000毫秒 = 30秒)
+    fetchGoldData();
+    setInterval(fetchGoldData, 30000);
+
+</script>
+</body>
+</html>
