@@ -10,8 +10,8 @@
             --card-bg: #1e1e1e;
             --text-main: #ffffff;
             --text-muted: #888888;
-            --up-color: #f23645;   /* 金融红 */
-            --down-color: #089981; /* 金融绿 */
+            --up-color: #f23645;
+            --down-color: #089981;
             --border-color: #333333;
         }
 
@@ -118,10 +118,26 @@
             border-radius: 6px;
             font-size: 14px;
             outline: none;
+            box-sizing: border-box;
+            width: 100%;
         }
 
         input:focus {
             border-color: var(--text-muted);
+        }
+
+        .pnl-details {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--border-color);
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
         }
 
         .pnl-result {
@@ -131,7 +147,7 @@
             font-size: 16px;
             margin-top: 12px;
             padding-top: 12px;
-            border-top: 1px dotted var(--border-color);
+            border-top: 1px solid var(--border-color);
         }
 
         .pnl-value {
@@ -145,46 +161,17 @@
             color: var(--text-muted);
             margin-top: 16px;
         }
+
         /* --- 移动端优化适配 --- */
-@media (max-width: 480px) {
-    body {
-        padding: 10px; /* 减小外边距，留出更多屏幕空间 */
-    }
-
-    .dashboard {
-        padding: 16px; /* 减小卡片内边距 */
-    }
-
-    .header h1 {
-        font-size: 18px; /* 标题稍微缩小 */
-    }
-
-    .current-price {
-        font-size: 36px; /* 核心价格字体缩小，防止换行 */
-        margin-right: 12px;
-    }
-
-    .price-change {
-        font-size: 14px;
-    }
-
-    /* 核心修复：将输入框从左右并排改为上下堆叠 */
-    .input-group {
-        flex-direction: column; 
-        gap: 10px;
-    }
-
-    input {
-        width: 100%; /* 确保输入框占满全宽 */
-        box-sizing: border-box; /* 防止边框撑破宽度 */
-        padding: 12px; /* 增加触摸面积，方便手机点击 */
-    }
-
-    .grid-info {
-        gap: 12px;
-        font-size: 13px;
-    }
-}
+        @media (max-width: 480px) {
+            body { padding: 10px; }
+            .dashboard { padding: 16px; }
+            .header h1 { font-size: 18px; }
+            .current-price { font-size: 36px; margin-right: 12px; }
+            .price-change { font-size: 14px; }
+            .input-group { flex-direction: column; gap: 10px; }
+            .grid-info { gap: 12px; font-size: 13px; }
+        }
     </style>
 </head>
 <body>
@@ -213,9 +200,21 @@
             <input type="number" id="buyPrice" placeholder="买入均价 (元/克)" step="0.01" oninput="calculatePnL()">
             <input type="number" id="holdAmount" placeholder="持仓数量 (克)" step="0.01" oninput="calculatePnL()">
         </div>
+        
+        <div class="pnl-details">
+            <div class="detail-row">
+                <span>表面浮动盈亏</span>
+                <span id="grossPnl" class="neutral">0.00</span>
+            </div>
+            <div class="detail-row">
+                <span>预估卖出手续费 (0.4%)</span>
+                <span id="feeValue" class="neutral">0.00</span>
+            </div>
+        </div>
+
         <div class="pnl-result">
-            <span>浮动盈亏 (元)</span>
-            <span class="pnl-value neutral" id="pnlValue">0.00</span>
+            <span>最终净盈亏 (元)</span>
+            <span class="pnl-value neutral" id="netPnlValue">0.00</span>
         </div>
     </div>
 
@@ -223,10 +222,10 @@
 </div>
 
 <script>
+    // 注意：这里已经替换成了你 Vercel 代理的地址
     const API_URL = '/api/gold';
     let latestPriceNum = 0;
 
-    // 解析纯文本数据的辅助函数
     function parseData(text) {
         const extract = (keyword) => {
             const regex = new RegExp(`${keyword}:\\s*([-\\d.]+)`);
@@ -249,14 +248,12 @@
         };
     }
 
-    // 设置涨跌颜色
     function getColorClass(value) {
         const num = parseFloat(value);
         if (isNaN(num) || num === 0) return 'neutral';
         return num > 0 ? 'up' : 'down';
     }
 
-    // 更新 DOM
     function updateUI(data) {
         latestPriceNum = parseFloat(data.price);
         
@@ -276,35 +273,56 @@
         document.getElementById('prevClose').innerText = data.prevClose;
         document.getElementById('updateTime').innerText = `更新时间: ${data.updateTime}`;
         
-        calculatePnL(); // 数据刷新时重新计算盈亏
+        calculatePnL();
     }
 
-    // 计算盈亏
+    // 升级后的盈亏与手续费计算逻辑
     window.calculatePnL = function() {
         const buyPrice = parseFloat(document.getElementById('buyPrice').value);
         const holdAmount = parseFloat(document.getElementById('holdAmount').value);
-        const pnlEl = document.getElementById('pnlValue');
+        
+        const grossPnlEl = document.getElementById('grossPnl');
+        const feeEl = document.getElementById('feeValue');
+        const netPnlEl = document.getElementById('netPnlValue');
 
         if (!isNaN(buyPrice) && !isNaN(holdAmount) && latestPriceNum > 0) {
-            const pnl = (latestPriceNum - buyPrice) * holdAmount;
-            pnlEl.innerText = (pnl > 0 ? '+' : '') + pnl.toFixed(2);
-            pnlEl.className = `pnl-value ${getColorClass(pnl)}`;
+            // 1. 计算表面浮动盈亏: (当前价 - 买入价) * 数量
+            const grossPnl = (latestPriceNum - buyPrice) * holdAmount;
+            
+            // 2. 计算预估手续费: 当前价 * 0.4% * 数量
+            const fee = latestPriceNum * 0.004 * holdAmount;
+            
+            // 3. 计算最终净盈亏: 表面盈亏 - 手续费
+            const netPnl = grossPnl - fee;
+
+            // 渲染表面盈亏
+            grossPnlEl.innerText = (grossPnl > 0 ? '+' : '') + grossPnl.toFixed(2);
+            grossPnlEl.className = getColorClass(grossPnl);
+
+            // 渲染手续费 (总是显示为扣除项)
+            feeEl.innerText = '-' + fee.toFixed(2);
+
+            // 渲染最终净盈亏 (带红绿颜色大字)
+            netPnlEl.innerText = (netPnl > 0 ? '+' : '') + netPnl.toFixed(2);
+            netPnlEl.className = `pnl-value ${getColorClass(netPnl)}`;
         } else {
-            pnlEl.innerText = "0.00";
-            pnlEl.className = "pnl-value neutral";
+            // 清空无数据状态
+            grossPnlEl.innerText = "0.00";
+            grossPnlEl.className = "neutral";
+            feeEl.innerText = "0.00";
+            netPnlEl.innerText = "0.00";
+            netPnlEl.className = "pnl-value neutral";
         }
     };
 
-    // 获取数据
     async function fetchGoldData() {
         const statusEl = document.getElementById('statusBar');
-        statusEl.innerText = "正在获取最新数据...";
+        statusEl.innerText = "正在同步最新数据...";
         
         try {
             const response = await fetch(API_URL);
-            if (!response.ok) throw new Error('网络响应异常');
+            if (!response.ok) throw new Error('网络异常');
             
-            // 因为接口返回内容带有特殊字符，按文本读取
             const text = await response.text(); 
             const parsedData = parseData(text);
             
@@ -312,20 +330,16 @@
                 updateUI(parsedData);
                 statusEl.innerText = "数据已更新";
             } else {
-                throw new Error('数据解析失败');
+                throw new Error('解析失败');
             }
         } catch (error) {
             console.error('获取数据失败:', error);
-            statusEl.innerText = `获取失败，请检查网络或跨域设置 (${new Date().toLocaleTimeString()})`;
+            statusEl.innerText = `同步中断，等待重试 (${new Date().toLocaleTimeString()})`;
         }
     }
 
-    // 初始化并设置定时器 (30000毫秒 = 30秒)
     fetchGoldData();
     setInterval(fetchGoldData, 30000);
-
 </script>
 </body>
-
 </html>
-
