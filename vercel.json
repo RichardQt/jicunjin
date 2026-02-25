@@ -3,6 +3,10 @@
     {
       "source": "/api/gold",
       "destination": "https://api.tangdouz.com/a/zsgold.php"
+    },
+    {
+      "source": "/api/london",
+      "destination": "https://ms.jr.jd.com/gw2/generic/CreatorSer/h5/m/pcQueryGoldQuote"
     }
   ]
 }
