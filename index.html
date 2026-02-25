@@ -44,7 +44,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-left: 4px solid #f5a623; /* 黄金色点缀 */
+            border-left: 4px solid #f5a623;
         }
 
         .global-title {
@@ -272,13 +272,13 @@
 </div>
 
 <script>
-    const API_ZHESHANG = '/api/gold';
-    const API_LONDON = '/api/london';
+    // 接口配置
+    const API_ZHESHANG = '/api/gold'; // 走 vercel.json 代理
+    const API_LONDON = '/api/london'; // 走 api/london.js 云函数
     let latestPriceNum = 0;
 
     // --- 辅助函数 ---
     function getColorClass(value) {
-        // 清理字符串中的 '+' 号再转数字
         const num = parseFloat(String(value).replace('+', ''));
         if (isNaN(num) || num === 0) return 'neutral';
         return num > 0 ? 'up' : 'down';
@@ -287,12 +287,12 @@
     // --- 获取并渲染伦敦金 ---
     async function fetchLondonGold() {
         try {
+            // 直接请求我们在 Vercel 部署的 Serverless 函数
             const response = await fetch(API_LONDON);
             if (!response.ok) throw new Error('伦敦金网络异常');
             
             const json = await response.json();
-            // 解析指定路径的数据
-            const data = json.data.goldQuoteVos[1]; 
+            const data = json?.data?.goldQuoteVos?.[1]; 
             
             if (data) {
                 document.getElementById('lgName').innerText = data.name;
@@ -306,9 +306,15 @@
                 const colorClass = getColorClass(data.raiseText);
                 priceEl.className = `lg-price ${colorClass}`;
                 changeEl.className = `lg-change ${colorClass}`;
+            } else {
+                throw new Error('返回数据格式异常或 Cookie 失效');
             }
         } catch (error) {
             console.error('获取伦敦金失败:', error);
+            document.getElementById('lgName').innerText = "伦敦金 (暂无数据)";
+            document.getElementById('lgPrice').className = "lg-price neutral";
+            document.getElementById('lgPrice').innerText = "--";
+            document.getElementById('lgChange').innerText = "请检查接口状态";
         }
     }
 
