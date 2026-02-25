@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>浙商银行积存金实时行情</title>
+    <title>黄金实时行情监控</title>
     <style>
         :root {
             --bg-color: #121212;
             --card-bg: #1e1e1e;
+            --card-bg-light: #2a2a2a;
             --text-main: #ffffff;
             --text-muted: #888888;
             --up-color: #f23645;
@@ -34,6 +35,44 @@
             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
         }
 
+        /* 伦敦金横幅样式 */
+        .global-market {
+            background-color: var(--card-bg-light);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #f5a623; /* 黄金色点缀 */
+        }
+
+        .global-title {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .global-name {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .global-data {
+            text-align: right;
+        }
+
+        .lg-price {
+            font-size: 20px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .lg-change {
+            font-size: 14px;
+        }
+
+        /* 浙商金样式 */
         .header {
             display: flex;
             justify-content: space-between;
@@ -91,7 +130,7 @@
         .info-label { color: var(--text-muted); }
 
         .calculator {
-            background-color: #2a2a2a;
+            background-color: var(--card-bg-light);
             padding: 16px;
             border-radius: 8px;
             margin-top: 20px;
@@ -122,9 +161,7 @@
             width: 100%;
         }
 
-        input:focus {
-            border-color: var(--text-muted);
-        }
+        input:focus { border-color: var(--text-muted); }
 
         .pnl-details {
             margin-top: 16px;
@@ -162,7 +199,7 @@
             margin-top: 16px;
         }
 
-        /* --- 移动端优化适配 --- */
+        /* 移动端优化适配 */
         @media (max-width: 480px) {
             body { padding: 10px; }
             .dashboard { padding: 16px; }
@@ -171,12 +208,25 @@
             .price-change { font-size: 14px; }
             .input-group { flex-direction: column; gap: 10px; }
             .grid-info { gap: 12px; font-size: 13px; }
+            .global-market { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .global-data { text-align: left; }
         }
     </style>
 </head>
 <body>
 
 <div class="dashboard">
+    <div class="global-market">
+        <div>
+            <div class="global-title">国际大盘参考</div>
+            <div class="global-name" id="lgName">伦敦金</div>
+        </div>
+        <div class="global-data">
+            <span class="lg-price neutral" id="lgPrice">--</span>
+            <span class="lg-change neutral" id="lgChange">-- (--%)</span>
+        </div>
+    </div>
+
     <div class="header">
         <h1>浙商银行积存金 (JCJ)</h1>
         <div class="update-time" id="updateTime">正在获取数据...</div>
@@ -222,17 +272,53 @@
 </div>
 
 <script>
-    // 注意：这里已经替换成了你 Vercel 代理的地址
-    const API_URL = '/api/gold';
+    const API_ZHESHANG = '/api/gold';
+    const API_LONDON = '/api/london';
     let latestPriceNum = 0;
 
-    function parseData(text) {
+    // --- 辅助函数 ---
+    function getColorClass(value) {
+        // 清理字符串中的 '+' 号再转数字
+        const num = parseFloat(String(value).replace('+', ''));
+        if (isNaN(num) || num === 0) return 'neutral';
+        return num > 0 ? 'up' : 'down';
+    }
+
+    // --- 获取并渲染伦敦金 ---
+    async function fetchLondonGold() {
+        try {
+            const response = await fetch(API_LONDON);
+            if (!response.ok) throw new Error('伦敦金网络异常');
+            
+            const json = await response.json();
+            // 解析指定路径的数据
+            const data = json.data.goldQuoteVos[1]; 
+            
+            if (data) {
+                document.getElementById('lgName').innerText = data.name;
+                
+                const priceEl = document.getElementById('lgPrice');
+                const changeEl = document.getElementById('lgChange');
+                
+                priceEl.innerText = data.lastPriceText;
+                changeEl.innerText = `${data.raiseText} (${data.raisePercent100})`;
+                
+                const colorClass = getColorClass(data.raiseText);
+                priceEl.className = `lg-price ${colorClass}`;
+                changeEl.className = `lg-change ${colorClass}`;
+            }
+        } catch (error) {
+            console.error('获取伦敦金失败:', error);
+        }
+    }
+
+    // --- 获取并渲染浙商金 ---
+    function parseZheshangData(text) {
         const extract = (keyword) => {
             const regex = new RegExp(`${keyword}:\\s*([-\\d.]+)`);
             const match = text.match(regex);
             return match ? match[1] : '--';
         };
-
         const timeRegex = /更新时间:\s*([\d-]+[\s\d:]+)/;
         const timeMatch = text.match(timeRegex);
 
@@ -248,65 +334,74 @@
         };
     }
 
-    function getColorClass(value) {
-        const num = parseFloat(value);
-        if (isNaN(num) || num === 0) return 'neutral';
-        return num > 0 ? 'up' : 'down';
+    async function fetchZheshangGold() {
+        const statusEl = document.getElementById('statusBar');
+        statusEl.innerText = "正在同步最新数据...";
+        
+        try {
+            const response = await fetch(API_ZHESHANG);
+            if (!response.ok) throw new Error('浙商金网络异常');
+            
+            const text = await response.text(); 
+            const data = parseZheshangData(text);
+            
+            if (data.price !== '--') {
+                latestPriceNum = parseFloat(data.price);
+                
+                const priceEl = document.getElementById('currentPrice');
+                const changeEl = document.getElementById('priceChange');
+
+                priceEl.innerText = data.price;
+                changeEl.innerText = `${data.change > 0 ? '+' : ''}${data.change} (${data.changePercent})`;
+
+                const colorClass = getColorClass(data.change);
+                priceEl.className = `current-price ${colorClass}`;
+                changeEl.className = `price-change ${colorClass}`;
+
+                document.getElementById('openPrice').innerText = data.open;
+                document.getElementById('highPrice').innerText = data.high;
+                document.getElementById('lowPrice').innerText = data.low;
+                document.getElementById('prevClose').innerText = data.prevClose;
+                document.getElementById('updateTime').innerText = `更新时间: ${data.updateTime}`;
+                
+                calculatePnL();
+                statusEl.innerText = "数据已更新";
+            } else {
+                throw new Error('解析失败');
+            }
+        } catch (error) {
+            console.error('获取浙商金失败:', error);
+            statusEl.innerText = `同步中断，等待重试 (${new Date().toLocaleTimeString()})`;
+        }
     }
 
-    function updateUI(data) {
-        latestPriceNum = parseFloat(data.price);
-        
-        const priceEl = document.getElementById('currentPrice');
-        const changeEl = document.getElementById('priceChange');
-
-        priceEl.innerText = data.price;
-        changeEl.innerText = `${data.change > 0 ? '+' : ''}${data.change} (${data.changePercent})`;
-
-        const colorClass = getColorClass(data.change);
-        priceEl.className = `current-price ${colorClass}`;
-        changeEl.className = `price-change ${colorClass}`;
-
-        document.getElementById('openPrice').innerText = data.open;
-        document.getElementById('highPrice').innerText = data.high;
-        document.getElementById('lowPrice').innerText = data.low;
-        document.getElementById('prevClose').innerText = data.prevClose;
-        document.getElementById('updateTime').innerText = `更新时间: ${data.updateTime}`;
-        
-        calculatePnL();
-    }
-
-    // 升级后的盈亏与手续费计算逻辑
+    // --- 盈亏计算与本地存储 ---
     window.calculatePnL = function() {
-        const buyPrice = parseFloat(document.getElementById('buyPrice').value);
-        const holdAmount = parseFloat(document.getElementById('holdAmount').value);
+        const buyPriceEl = document.getElementById('buyPrice');
+        const holdAmountEl = document.getElementById('holdAmount');
+        
+        const buyPrice = parseFloat(buyPriceEl.value);
+        const holdAmount = parseFloat(holdAmountEl.value);
+
+        // 保存到本地浏览器缓存
+        localStorage.setItem('savedBuyPrice', buyPriceEl.value);
+        localStorage.setItem('savedHoldAmount', holdAmountEl.value);
         
         const grossPnlEl = document.getElementById('grossPnl');
         const feeEl = document.getElementById('feeValue');
         const netPnlEl = document.getElementById('netPnlValue');
 
         if (!isNaN(buyPrice) && !isNaN(holdAmount) && latestPriceNum > 0) {
-            // 1. 计算表面浮动盈亏: (当前价 - 买入价) * 数量
             const grossPnl = (latestPriceNum - buyPrice) * holdAmount;
-            
-            // 2. 计算预估手续费: 当前价 * 0.4% * 数量
             const fee = latestPriceNum * 0.004 * holdAmount;
-            
-            // 3. 计算最终净盈亏: 表面盈亏 - 手续费
             const netPnl = grossPnl - fee;
 
-            // 渲染表面盈亏
             grossPnlEl.innerText = (grossPnl > 0 ? '+' : '') + grossPnl.toFixed(2);
             grossPnlEl.className = getColorClass(grossPnl);
-
-            // 渲染手续费 (总是显示为扣除项)
             feeEl.innerText = '-' + fee.toFixed(2);
-
-            // 渲染最终净盈亏 (带红绿颜色大字)
             netPnlEl.innerText = (netPnl > 0 ? '+' : '') + netPnl.toFixed(2);
             netPnlEl.className = `pnl-value ${getColorClass(netPnl)}`;
         } else {
-            // 清空无数据状态
             grossPnlEl.innerText = "0.00";
             grossPnlEl.className = "neutral";
             feeEl.innerText = "0.00";
@@ -315,31 +410,27 @@
         }
     };
 
-    async function fetchGoldData() {
-        const statusEl = document.getElementById('statusBar');
-        statusEl.innerText = "正在同步最新数据...";
+    // --- 初始化 ---
+    function init() {
+        // 读取本地缓存的买入价和持仓量
+        const savedBuyPrice = localStorage.getItem('savedBuyPrice');
+        const savedHoldAmount = localStorage.getItem('savedHoldAmount');
         
-        try {
-            const response = await fetch(API_URL);
-            if (!response.ok) throw new Error('网络异常');
-            
-            const text = await response.text(); 
-            const parsedData = parseData(text);
-            
-            if (parsedData.price !== '--') {
-                updateUI(parsedData);
-                statusEl.innerText = "数据已更新";
-            } else {
-                throw new Error('解析失败');
-            }
-        } catch (error) {
-            console.error('获取数据失败:', error);
-            statusEl.innerText = `同步中断，等待重试 (${new Date().toLocaleTimeString()})`;
-        }
+        if (savedBuyPrice) document.getElementById('buyPrice').value = savedBuyPrice;
+        if (savedHoldAmount) document.getElementById('holdAmount').value = savedHoldAmount;
+
+        // 首次加载数据
+        fetchLondonGold();
+        fetchZheshangGold();
+
+        // 设定定时器：每30秒同时刷新大盘和积存金
+        setInterval(() => {
+            fetchLondonGold();
+            fetchZheshangGold();
+        }, 30000);
     }
 
-    fetchGoldData();
-    setInterval(fetchGoldData, 30000);
+    init();
 </script>
 </body>
 </html>
