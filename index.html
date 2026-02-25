@@ -287,12 +287,16 @@
     // --- 获取并渲染伦敦金 ---
     async function fetchLondonGold() {
         try {
-            // 直接请求我们在 Vercel 部署的 Serverless 函数
             const response = await fetch(API_LONDON);
             if (!response.ok) throw new Error('伦敦金网络异常');
             
             const json = await response.json();
-            const data = json?.data?.goldQuoteVos?.[1]; 
+            
+            // 【核心修改】按照实际返回的层级解析：resultData -> data -> goldQuoteVos
+            const list = json?.resultData?.data?.goldQuoteVos || [];
+            
+            // 优先通过唯一代码匹配，增强代码容错率；如果没匹配到，兜底取数组的第2项 [1]
+            const data = list.find(item => item.uniqueCode === 'WG-XAUUSD') || list[1];
             
             if (data) {
                 document.getElementById('lgName').innerText = data.name;
@@ -307,14 +311,14 @@
                 priceEl.className = `lg-price ${colorClass}`;
                 changeEl.className = `lg-change ${colorClass}`;
             } else {
-                throw new Error('返回数据格式异常或 Cookie 失效');
+                throw new Error('数据层级中未找到伦敦金节点');
             }
         } catch (error) {
             console.error('获取伦敦金失败:', error);
-            document.getElementById('lgName').innerText = "伦敦金 (暂无数据)";
+            document.getElementById('lgName').innerText = "伦敦金 (解析异常)";
             document.getElementById('lgPrice').className = "lg-price neutral";
             document.getElementById('lgPrice').innerText = "--";
-            document.getElementById('lgChange').innerText = "请检查接口状态";
+            document.getElementById('lgChange').innerText = "请检查数据结构";
         }
     }
 
@@ -440,3 +444,4 @@
 </script>
 </body>
 </html>
+
